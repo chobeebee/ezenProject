@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aop-reference-model>
+<aop-project name="zipchelin"/>
+<aop-project name="stsproject"/>
+<aop-project name="stsapi"/>
+<aop-project name="restapi"/>
+<aop-project name="stsBase"/>
+</aop-reference-model>

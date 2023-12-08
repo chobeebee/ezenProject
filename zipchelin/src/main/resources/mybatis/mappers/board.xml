@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+ "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+ 
+ <!-- namespace : xml을 구분하기 위한 네이밍 -->
+ <mapper namespace="mapper.board">
+ 	<resultMap type="articleVO" id="articleResult">
+ 		<result property="level" column="lvl" /> <!-- lvl : level의 별칭 -->
+ 		<result property="articleNo" column="articleNo" />
+ 		<result property="parentNo" column="parentNo" />
+ 		<result property="title" column="title" />
+ 		<result property="writeDate" column="writeDate" />
+ 		<result property="id" column="id" />
+ 	</resultMap>
+ 	
+ 	<resultMap type="imageVO" id="imageResult">
+ 		<result property="imageFileNo" column="imageFileNo"/>
+ 		<result property="imageFileName" column="imageFileName"/>
+ 		<result property="regDate" column="regDate"/>
+ 		<result property="articleNo" column="articleNo"/>
+ 	</resultMap>
+ 	
+ 	<!-- 글 목록 전체를 조회하는 쿼리문
+ 	<select id="selectAllArticles" resultMap="articleResult">
+ 		<![CDATA[
+ 			SELECT level, articleNo, parentNo, title, writeDate, id FROM board_tbl START WITH parentNo=0 CONNECT BY PRIOR articleNo=parentNo 
+ 			ORDER SIBLINGS BY articleNo DESC
+ 		]]>
+ 	</select> -->
+ 	
+ 	<!-- 글 목록을 조회하는 쿼리문(페이징 처리) -->
+ 	<select id="selectAllArticles" resultMap="articleResult" parameterType="java.util.Map">
+ 		<![CDATA[
+ 			SELECT * FROM (SELECT ROWNUM AS recNum, lvl, articleNo, parentNo, title, writeDate, id FROM (
+ 			SELECT level AS lvl, articleNo, parentNo, title, writeDate, id FROM board_tbl START WITH parentNo=0 CONNECT BY PRIOR articleNo=parentNo ORDER SIBLINGS BY articleNo DESC)) 
+ 			WHERE recNum BETWEEN (#{section}-1)*100 + (#{pageNum}-1)*10+1 AND (#{section}-1)*100 + #{pageNum}*10
+ 		]]> 		
+ 	</select>
+ 	
+ 	<!-- 전제 글 목록 수 -->
+ 	<select id="selectToArticles" resultType="int">
+ 		<![CDATA[
+ 			SELECT count(*) FROM board_tbl
+ 		]]>
+ 	</select>
+ 	
+ 	<!-- 글 번호 -->
+ 	<select id="getNewArticleNo" resultType="int">
+ 		<![CDATA[
+ 			SELECT nvl(max(articleNo),0)+1 FROM board_tbl
+ 		]]>
+ 	</select>
+ 	
+ 	<!-- 이미지 파일 번호 -->
+ 	<select id="selectNewImageFileNo" resultType="int">
+ 		<![CDATA[
+ 			select nvl(max(imageFileNo),0) from imagefile_tbl
+ 		]]>
+ 	</select>
+ 	
+ 	<!-- 새 글 추가(이미지 1개만 가능)-->
+ 	<!-- <insert id="insertNewArticle" parameterType="java.util.Map">
+ 		<![CDATA[
+ 			INSERT INTO board_tbl(articleNo, parentNo, title, content, imageFileName, id) 
+ 			VALUES (#{articleNo}, #{parentNo}, #{title}, #{content}, #{imageFileName}, #{id})
+ 		]]>
+ 	</insert> -->
+ 	<!-- 새 글 추가(이미지 여러개) -->
+ 	<insert id="insertNewArticle" parameterType="java.util.Map">
+ 		<![CDATA[
+ 			INSERT INTO board_tbl(articleNo, parentNo, title, content, imageFileName, id) 
+ 			VALUES (#{articleNo}, #{parentNo}, #{title}, #{content}, null, #{id})
+ 		]]>
+ 	</insert>
+ 	
+ 	<!-- 이미지 여러개 추가 -->
+ 	<insert id="insertNewImage" parameterType="java.util.Map">
+ 		<foreach collection="list" item="item" open="INSERT ALL" separator="" close="SELECT * FROM DUAL">
+ 			INTO imagefile_tbl(imageFileNo, imageFileName, articleNo) 
+ 			values(#{item.imageFileNo}, #{item.imageFileName}, #{item.articleNo})
+ 		</foreach>
+ 	</insert>
+ 	
+ 	<!-- 해당 게시물에 등록된 이미지 리스트 -->
+ 	<select id="selectImageFileList" resultMap="imageResult" parameterType="int">
+ 		<![CDATA[
+ 			SELECT * FROM imagefile_tbl WHERE articleNo = #{articleNo}
+ 		]]>
+ 	</select>
+ 	
+ 	<!-- 상세 글 -->
+ 	<select id="selectArticle" resultType="articleVO" parameterType="int">
+ 		<![CDATA[
+ 			SELECT * FROM board_tbl where articleNo=#{articleNo}
+ 		]]>
+ 	</select>
+ 	
+ 	<!-- 게시글 테이블 수정 -->
+ 	<update id="updateArticle" parameterType="java.util.Map">
+ 		update board_tbl set title=#{title}, content=#{content}
+ 		<if test="imageFileName != '' and imageFileName != null">
+ 			, imageFileName=#{imageFileName} 
+ 		</if>
+ 		where articleNo=#{articleNo}
+ 	</update>
+ 	
+ 	<!-- 이미지 테이블 수정 -->
+ 	<update id="updateImage" parameterType="imageVO">
+ 		<foreach collection="list" item="item" open="DECLARE BEGIN" separator=";" close=";END;">
+ 			update imagefile_tbl set imageFileName=#{item.imageFileName} where imageFileNo=#{item.imageFileNo}
+ 		</foreach>
+ 	</update>
+ 	
+ 	<!-- 삭제 -->
+ 	<update id="deleteArticle" parameterType="int">
+ 		<![CDATA[
+ 			delete from board_tbl where articleNo 
+ 			in(select articleNo from board_tbl START WITH articleNo=#{articleNo} CONNECT BY PRIOR articleNo=parentNo)
+ 		]]>
+ 	</update>
+ 	
+ 	<!-- 삭제할 글 번호 리스트 -->
+ 	<select id="selectRemovedArticles" resultType="int" parameterType="int">
+ 		<![CDATA[
+ 			SELECT articleNo FROM board_tbl START WITH articleNo=#{articleNo} CONNECT BY PRIOR articleNo=parentNo
+ 		]]>
+ 	</select>
+ 	
+ 	<!-- 삭제할 게시글의 이미지 삭제 //글 삭제 전에 지워야함 //참조무결성 때문 -->
+ 	<delete id="deleteImage" parameterType="int">
+ 		<![CDATA[
+ 			delete from imagefile_tbl where articleNo 
+ 			in(select articleNo from board_tbl START WITH articleNo=#{articleNo} CONNECT BY PRIOR articleNo=parentNo)
+ 		]]>
+ 	</delete>
+ </mapper>
